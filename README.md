@@ -30,15 +30,6 @@ Before using any examples, ensure you have:
 |---------|-------------|----------|----------------|
 | [EKS with Terraform](./getting-started/eks-terraform/) | Complete EKS cluster with Edera protection using Terraform | AWS | ~15 minutes |
 
-### Coming Soon
-
-- **EKS with CDK** - AWS CDK TypeScript example
-- **EKS with eksctl** - Simple eksctl-based deployment
-- **ECS Fargate** - Serverless container deployment
-- **GKE** - Google Kubernetes Engine deployment
-- **AKS** - Azure Kubernetes Service deployment
-- **Self-Managed K8s** - On-premises Kubernetes deployment
-
 ## 🛡️ Region Support
 
 Edera AMIs are currently available in:
