@@ -11,6 +11,8 @@ This example provides scripts for installing Edera on any Linux node. It's desig
 
 ## Quick Start
 
+### Standalone (no Kubernetes)
+
 ```bash
 # 1. Save your GAR key as key.json
 cp /path/to/your/key.json .
@@ -18,11 +20,33 @@ cp /path/to/your/key.json .
 # 2. Install Edera on your node
 INSTALLER_IP=<node-ip> make deploy
 
-# 3. Configure Kubernetes (if applicable)
+# 3. Verify installation (after reboot completes)
+INSTALLER_IP=<node-ip> make test-standalone
+```
+
+### With Kubernetes
+
+```bash
+# 1. Save your GAR key as key.json
+cp /path/to/your/key.json .
+
+# 2. Install Edera on your node
+INSTALLER_IP=<node-ip> make deploy
+
+# 3. Configure Kubernetes RuntimeClass
 make configure
 
-# 4. Test the deployment
+# 4. Test with a pod
 make test
+```
+
+### Cloud instances (EC2, GCE, etc.)
+
+For cloud instances that use non-root SSH users:
+
+```bash
+INSTALLER_IP=<node-ip> SSH_USER=ubuntu SSH_KEY=~/.ssh/my-key.pem make deploy
+INSTALLER_IP=<node-ip> SSH_USER=ubuntu SSH_KEY=~/.ssh/my-key.pem make test-standalone
 ```
 
 ## Prerequisites
@@ -154,13 +178,31 @@ make clean
 
 ### Common Issues
 
+#### SSH Permission Denied
+
+If you see `Permission denied (publickey)`, specify the SSH user and key:
+
+```bash
+INSTALLER_IP=<node-ip> SSH_USER=ubuntu SSH_KEY=~/.ssh/my-key.pem make deploy
+```
+
+Common SSH users by platform:
+- **EC2 Ubuntu**: `ubuntu`
+- **EC2 Amazon Linux**: `ec2-user`
+- **GCE**: Your Google account username
+- **Azure**: The admin username you specified
+
+#### Make deploy shows "Error 255"
+
+This is expected. The installer reboots the node when complete, which closes the SSH connection. Wait 1-2 minutes for the node to come back online, then run `make test-standalone` to verify.
+
 #### Installation Fails
 
-- Verify SSH access: `ssh root@<node-ip>`
-- Check container runtime: `ssh root@<node-ip> 'docker --version || nerdctl --version'`
+- Verify SSH access: `ssh -i <key> <user>@<node-ip>`
+- Check container runtime: `ssh -i <key> <user>@<node-ip> 'docker --version || nerdctl --version'`
 - Verify GAR key is valid and has appropriate permissions
 
-#### Pod Stuck in Pending
+#### Pod Stuck in Pending (Kubernetes)
 
 ```bash
 kubectl describe pod edera-test-pod -n edera-test
