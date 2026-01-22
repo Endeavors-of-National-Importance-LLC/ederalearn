@@ -8,9 +8,10 @@ help:
 	@echo ""
 	@echo "Security Tests:"
 	@echo "  make welcome            - Deploy welcome-to-edera test pod"
-	@echo "  make leaky-vessel       - Run Leaky Vessel container escape demo"
-	@echo "  make falco-install      - Install Falco for security monitoring"
-	@echo "  make falco-test         - Run Falco integration test"
+	@echo "  make leaky-vessel       - Show secrets exposed without Edera"
+	@echo "  make leaky-vessel-secure - Show secrets protected with Edera"
+	@echo "  make falco-install      - Install Falco with Edera plugin"
+	@echo "  make falco-test         - Deploy Falco test pod (requires Edera Falco plugin)"
 	@echo ""
 	@echo "Performance Tests:"
 	@echo "  make iperf              - Run iperf network benchmark"
@@ -44,31 +45,80 @@ welcome:
 	@echo "Waiting for pod to be ready..."
 	kubectl wait --for=condition=ready pod/welcome-to-edera --timeout=120s
 	@echo ""
-	@echo "Pod is running. Verify zone on node with: sudo protect zone list"
+	@echo "Pod is running. Verify with:"
+	@echo "  kubectl get pod welcome-to-edera -o jsonpath='{.spec.runtimeClassName}' && echo"
 
 leaky-vessel:
-	kubectl apply -f security/leaky-vessel-test.yaml
-	@echo "Waiting for pod to complete..."
-	kubectl wait --for=condition=ready pod/leaky-vessel-test --timeout=120s || true
+	@echo "=== Leaky Vessel Demo: Process Isolation ==="
 	@echo ""
-	@echo "Check logs with: kubectl logs leaky-vessel-test"
+	@echo "Step 1: Deploy vulnerable pod (no Edera) and raider pod"
+	kubectl apply -f security/leaky-vessel-test.yaml
+	@echo "Waiting for pods to be ready..."
+	kubectl wait --for=condition=ready pod/vulnerable-pod --timeout=120s
+	kubectl wait --for=condition=ready pod/raider --timeout=120s
+	@echo ""
+	@echo "Step 2: Raider attempts to steal secrets from vulnerable pod..."
+	@echo ""
+	@PID=$$(kubectl exec raider -- /bin/sh -c "ps faux | grep '[s]leep 5' | head -n1 | awk '{print \$$2}'"); \
+	if [ -n "$$PID" ]; then \
+		echo "Found vulnerable pod process: $$PID"; \
+		echo "Secrets stolen:"; \
+		kubectl exec raider -- /bin/sh -c "cat /proc/$$PID/environ | tr '\0' '\n' | grep 'PASSWORD\|SECRET'"; \
+	else \
+		echo "Could not find process"; \
+	fi
+	@echo ""
+	@echo "=== Without Edera, secrets are exposed! ==="
+	@echo ""
+	@echo "Now run 'make leaky-vessel-secure' to see Edera's protection"
 
-leaky-vessel-baseline:
-	@echo "WARNING: This demonstrates a container escape on unprotected runtime"
-	@echo "Only run on test clusters!"
-	kubectl apply -f security/leaky-vessel-no-edera.yaml
+leaky-vessel-secure:
+	@echo "=== Deploying secure pod with Edera ==="
+	kubectl delete pod vulnerable-pod --force --ignore-not-found
+	kubectl apply -f security/secure-pod.yaml
+	@echo "Waiting for secure pod..."
+	kubectl wait --for=condition=ready pod/secure-pod --timeout=120s
+	@echo ""
+	@echo "Step 3: Raider attempts to steal secrets from secure pod..."
+	@echo ""
+	@PID=$$(kubectl exec raider -- /bin/sh -c "ps faux | grep '[s]leep 5' | head -n1 | awk '{print \$$2}'" 2>/dev/null); \
+	if [ -n "$$PID" ]; then \
+		echo "Found process: $$PID"; \
+		kubectl exec raider -- /bin/sh -c "cat /proc/$$PID/environ | tr '\0' '\n' | grep 'PASSWORD\|SECRET'" || echo "Cannot access secrets!"; \
+	else \
+		echo "No process found - the container is secure!"; \
+	fi
+	@echo ""
+	@echo "=== With Edera, secrets are protected by zone isolation! ==="
 
 falco-install:
+	@echo "Installing Falco with Edera plugin support..."
+	@echo "NOTE: This requires Edera Protect to be installed on the nodes."
+	@echo "See: https://docs.edera.dev/guides/observability/falco-integration/"
+	@echo ""
 	helm repo add falcosecurity https://falcosecurity.github.io/charts
 	helm repo update
-	helm install falco falcosecurity/falco --namespace falco --create-namespace
+	helm install falco falcosecurity/falco \
+		--namespace falco \
+		--create-namespace \
+		-f security/falco/falco-edera-values.yaml
+	@echo ""
+	@echo "Waiting for Falco pods to be ready..."
+	kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=falco -n falco --timeout=120s
+	@echo ""
+	@echo "Falco installed. Verify with:"
+	@echo "  kubectl logs -n falco -l app.kubernetes.io/name=falco | grep -i edera"
 
 falco-test:
+	@echo "NOTE: Monitoring inside Edera zones requires the Edera Falco plugin."
+	@echo "See: https://docs.edera.dev/guides/observability/falco-integration/"
+	@echo ""
 	kubectl apply -f security/falco-test.yaml
 	kubectl wait --for=condition=ready pod/falco-test --timeout=120s
 	@echo ""
-	@echo "Trigger alert with: kubectl exec -it falco-test -- cat /etc/shadow"
-	@echo "View alerts with: kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=50"
+	@echo "Test pod deployed. If Edera Falco plugin is installed:"
+	@echo "  Trigger alert: kubectl exec -it falco-test -- cat /etc/shadow"
+	@echo "  View alerts:   kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=50"
 
 # Performance Tests
 iperf:
@@ -128,7 +178,7 @@ kyverno-test:
 clean-security:
 	-kubectl delete -f security/welcome-to-edera.yaml
 	-kubectl delete -f security/leaky-vessel-test.yaml
-	-kubectl delete -f security/leaky-vessel-no-edera.yaml
+	-kubectl delete -f security/secure-pod.yaml
 	-kubectl delete -f security/falco-test.yaml
 	-helm uninstall falco -n falco
 	-kubectl delete namespace falco
