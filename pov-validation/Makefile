@@ -218,15 +218,16 @@ kcbench-baseline:
 grafana-install:
 	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 	helm repo update
-	helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace
+	helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace
 	@echo ""
 	@echo "Access Grafana with: kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80"
-	@echo "Default credentials: admin/prom-operator"
+	@echo "Get password with:  kubectl get secret -n monitoring prometheus-grafana -o jsonpath='{.data.admin-password}' | base64 -d && echo"
+	@echo "Username: admin"
 
 kyverno-install:
 	helm repo add kyverno https://kyverno.github.io/kyverno/
 	helm repo update
-	helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace
+	helm upgrade --install kyverno kyverno/kyverno --namespace kyverno --create-namespace
 
 kyverno-test:
 	kubectl create namespace secure-workloads --dry-run=client -o yaml | kubectl apply -f -
