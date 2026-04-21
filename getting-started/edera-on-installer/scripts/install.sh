@@ -155,11 +155,16 @@ check_runtime() {
 
     local runtime_err
     if ! runtime_err=$("$RUNTIME" info 2>&1 >/dev/null); then
-        err "cannot run $RUNTIME — ensure $USER has permission to use $RUNTIME without sudo"
         [[ -n "$runtime_err" ]] && detail "$runtime_err"
-        if [[ "$RUNTIME" == "docker" ]]; then
-            printf "    Add your user to the docker group and start a new session:\n"
-            printf "      sudo usermod -aG docker \$USER\n"
+        if [[ "$RUNTIME" == "docker" ]] && grep -q "Is the docker daemon running" <<< "$runtime_err"; then
+            err "docker daemon is not running — start it with:"
+            printf "      sudo systemctl start docker\n"
+        else
+            err "cannot run $RUNTIME — ensure $USER has permission to use $RUNTIME without sudo"
+            if [[ "$RUNTIME" == "docker" ]]; then
+                printf "    Add your user to the docker group and start a new session:\n"
+                printf "      sudo usermod -aG docker \$USER\n"
+            fi
         fi
         exit 1
     fi
